@@ -2,42 +2,25 @@ var AWS = require('aws-sdk');
 var s3 = new AWS.S3();
 let Client = require('ssh2-sftp-client');
 let sftp = new Client();
-const path = require('path');
-const fs = require('fs');
-const pg = require('pg');
-var zlib = require('zlib');
 const stream = require('stream');
 var glue = new AWS.Glue();
-
-let SFTP_CONFIG = {
-    host: '10.55.80.1',
-    port: '10022',
-    username: 'ivecloud',
-    password: 'G3Q$9bT2'
-};
-
-
-
-let DATABASE_CONFIG = {
-    user: process.env.db_user || 'ivesbdbadmin',
-    password: process.env.db_pass || 'ivesb$db9admin',
-    database: process.env.db_name || 'IVEDB',
-    host: process.env.db_host || 'ive-sandbox-db.cluster-ce6ethc5pzux.us-west-2.rds.amazonaws.com',
-    port: process.env.db_port || 5432
-};
+const SFTP_CONFIG = require('./config/_config.sftp')
+const DATABASE_CONFIG = require('./config/_config.db')
 
 
 
 
 let SFTP_FOLDER = '/Inbox';
 const folder = '/tmp/temp.txt';
+const crawlerName1 = 'ive-dev-datamart-fixedlength-file-crawler1';
+const crawlerName2 = 'ive-dev-datamart-fixedlength-file-crawler2';
 
+
+/* 
+S3 file upload
+*/
 const uploadStream = ({ Bucket, Key }) => {
-    const s3 = new AWS.S3();
     const pass = new stream.PassThrough();
-    console.log('----------pass---------')
-    console.log(pass)
-    console.log(JSON.stringify({ Bucket, Key }, null, 2))
     return {
         writeStream: pass,
         promise: s3.upload({ Bucket, Key, Body: pass }).promise(),
@@ -53,35 +36,24 @@ const uploadStream = ({ Bucket, Key }) => {
  * Source data catalog table name is sent as a parameter to the glue job */
 
 function callGlueJob(filename) {
-    console.log("calling Glueeeeeeeeeeeeee")
-    return new Promise(async(resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
         try {
 
             console.log("call glue job" + filename);
             var params = {
-                // JobName: '',
-                // Arguments: {
-                // '--sourceFile': filename,
-                // '--glueRegion': 'us-west-2',
-                // '--crawlerName1': 'ive-dev-datamart-fixedlength-file-crawler1',
-                // '--crawlerName2': 'ive-dev-datamart-fixedlength-file-crawler2',
-                // '--glueDb': 'inputdb',
-                // }
                 JobName: 'ive_dev_partssummary',
                 Arguments: {
                     '--sourceFile': filename,
                     '--glueRegion': 'us-west-2',
-                    '--crawlerName1': 'ive-dev-datamart-fixedlength-file-crawler1',
-                    '--crawlerName2': 'ive-dev-datamart-fixedlength-file-crawler2',
+                    '--crawlerName1': crawlerName1,
+                    '--crawlerName2': crawlerName2,
                     '--glueDb': 'inputdb',
                 }
             };
 
 
-            console.log('glue params')
-            console.log(params)
             //Invoke job run
-            glue.startJobRun(params, async(err, data) => {
+            glue.startJobRun(params, async (err, data) => {
                 if (err) reject(err)
                 else
                     console.log(data); // successful response
@@ -89,13 +61,12 @@ function callGlueJob(filename) {
                 console.log('jobId ' + jobId);
 
                 var params = {
-                    // JobName: 'ive-dev-datamart-loader-1',
+                    /* required */
                     JobName: 'ive_dev_partssummary',
                     /* required */
                     RunId: jobId,
-                    /* required */
                 };
-                var status = await glue.getJobRun(params, function(err, data) {
+                var status = await glue.getJobRun(params, function (err, data) {
                     if (err) console.log(err, err.stack); // an error occurred
                     else console.log(data); // successful response
                 }).promise();
@@ -147,12 +118,12 @@ const splitfileNameAndExtension = (filename) => {
 }
 
 
-exports.handler = async function(event, context, callback) {
+exports.handler = async function (event, context, callback) {
     try {
-        const gofile = () => new Promise(async(res, rej) => {
+        const gofile = () => new Promise(async (res, rej) => {
             await sftp.connect(SFTP_CONFIG)
                 // .then(() => sftp.list('/Inbox/TestResponse'))
-                .then(async(chunk) => new Promise(async(res, rej) => {
+                .then(async (chunk) => new Promise(async (res, rej) => {
                     console.log('here')
                     // let fileWtr = fs.createWriteStream('/tmp/sample.txt.gz');
 
@@ -190,10 +161,10 @@ exports.handler = async function(event, context, callback) {
                     //     flags: 'w',
                     //     encoding: null
                     // });
-                 
-                        
-                
-      
+
+
+
+
                     await sftp.get('/Inbox/TestResponse/GBE3BKZ1.DBK5Z01D.X0000001', out).catch(e => console.log("catch", e))
                     sftp.end()
                 }))
@@ -240,7 +211,7 @@ exports.handler = async function(event, context, callback) {
         console.log(fileNameAndExtension, 'fileNameAndExtension')
 
         console.log('deleting the file')
-        const deleteFileFromSftp = () => new Promise(async(res, rej) => {
+        const deleteFileFromSftp = () => new Promise(async (res, rej) => {
             await sftp.connect(SFTP_CONFIG)
                 .then(() => {
                     sftp.delete(`${sftpsourceFolder}/${filename}`).then(() => {
@@ -254,7 +225,7 @@ exports.handler = async function(event, context, callback) {
                     });
 
                 })
-                .catch(() => {})
+                .catch(() => { })
         })
 
 
@@ -262,7 +233,7 @@ exports.handler = async function(event, context, callback) {
 
         const write = file => {
             return new Promise((res, rej) => {
-                fs.writeFile(file, JSON.stringify({ message: '' }), async(err) => {
+                fs.writeFile(file, JSON.stringify({ message: '' }), async (err) => {
                     if (err) {
                         return rej(err)
                     }
@@ -279,7 +250,7 @@ exports.handler = async function(event, context, callback) {
 
                     await sftp.connect(SFTP_CONFIG)
                         .then(() => sftp.get(`${sftpsourceFolder}/${filename}`))
-                        .then(async(chunk) => {
+                        .then(async (chunk) => {
                             sftp.end()
                             console.log('here file will be moved')
 
