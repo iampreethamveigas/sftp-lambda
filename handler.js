@@ -56,17 +56,15 @@ function callGlueJob(filename) {
             glue.startJobRun(params, async (err, data) => {
                 if (err) reject(err)
                 else
-                    console.log(data); // successful response
-                var jobId = data['JobRunId'];
-                console.log('jobId ' + jobId);
-
-                var params = {
+                    // successful response
+                    let jobId = data['JobRunId'];
+                let params = {
                     /* required */
                     JobName: 'ive_dev_partssummary',
                     /* required */
                     RunId: jobId,
                 };
-                var status = await glue.getJobRun(params, function (err, data) {
+                let status = await glue.getJobRun(params, function (err, data) {
                     if (err) console.log(err, err.stack); // an error occurred
                     else console.log(data); // successful response
                 }).promise();
@@ -87,14 +85,16 @@ function callGlueJob(filename) {
 
 
 
-
-const removeExtention = (filename) => {
+/* 
+fn to remove the extension of a file
+*/
+const removeExtension = (filename) => {
     // get the last dot
-    const fileNamelengthWithoutExten = filename.split('.').length - 1;
-    const filenameinarray = filename.split('.');
+    const fileName_length_Without_Extension = filename.split('.').length - 1;
+    const filename_in_array = filename.split('.');
     let name = ''
-    for (let i = 0; i < fileNamelengthWithoutExten; i++) {
-        name += filenameinarray[i]
+    for (let i = 0; i < fileName_length_Without_Extension; i++) {
+        name += filename_in_array[i]
     }
     return name
 }
