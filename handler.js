@@ -30,8 +30,6 @@ const uploadStream = ({ Bucket, Key }) => {
 
 
 
-
-
 /** Start the ETL glue job to insert data to vehicle_data table 
  * Source data catalog table name is sent as a parameter to the glue job */
 
@@ -83,8 +81,6 @@ function callGlueJob(filename) {
 
 }
 
-
-
 /* 
 fn to remove the extension of a file
 */
@@ -100,17 +96,11 @@ const removeExtension = (filename) => {
 }
 
 
+/* Fn to split the file name */
 const splitfileNameAndExtension = (filename) => {
-    console.log(filename, 'filename')
     // get the last dot
-    const fileNamelengthWithoutExten = filename.split('.').length - 1;
-    const filenameinarray = filename.split('.');
     let extension = filename.substring(filename.lastIndexOf('.') + 1, filename.length) != '.txt' ? '' : filename.substring(filename.lastIndexOf('.') + 1, filename.length)
     let name = extension.length > 0 ? filename.replace('.' + extension, '') : filename
-    // for (let i = 0; i < fileNamelengthWithoutExten; i++) {
-    //     name += filenameinarray[i]
-    // }
-
     return {
         name,
         extension
@@ -118,69 +108,48 @@ const splitfileNameAndExtension = (filename) => {
 }
 
 
+
+
+const process_file = (event) => new Promise(async (res, rej) => {
+    await sftp.connect(SFTP_CONFIG)
+        .then(async (chunk) => new Promise(async (res, rej) => {
+            // let fileWtr = fs.createWriteStream('/tmp/sample.txt.gz');
+            let fileWtr = fs.createWriteStream(folder);
+            fileWtr.on('open', function (fd) {
+                console.log((fd))
+            })
+            readStream.on('open', function () {
+                // This just pipes the read stream to the response object (which goes to the client)
+                const { writeStream, promise } = uploadStream({ Bucket: 'ive-dev-parts-info', Key: `uploadingSample` });
+                readStream.pipe(writeStream);
+                promise.then(e => {
+                    res(e)
+                }).catch(e => rej(e))
+            });
+
+            readStream.on('error', function (err) {
+                rej(err);
+            });
+            let out = fs.createWriteStream(folder, {
+                flags: 'w',
+                encoding: null
+            });
+            await sftp.get('/Inbox/TestResponse/GBE3BKZ1.DBK5Z01D.X0000001', out).catch(e => console.log("catch", e))
+            sftp.end()
+        }))
+        .catch(e => rej('ddada'))
+})
+
+/**
+ * Fn is RND
+ * agenda is to pull the file from onprem sftp push to s3 using lambda and cloudwatch event
+ * 
+ */
 exports.handler = async function (event, context, callback) {
     try {
-        const gofile = () => new Promise(async (res, rej) => {
-            await sftp.connect(SFTP_CONFIG)
-                // .then(() => sftp.list('/Inbox/TestResponse'))
-                .then(async (chunk) => new Promise(async (res, rej) => {
-                    console.log('here')
-                    // let fileWtr = fs.createWriteStream('/tmp/sample.txt.gz');
-
-                    // fileWtr.on('open', function(fd){
-                    //     console.log((fd))
-                    // })
-
-                    // let fileWtr = fs.createWriteStream(folder);
-
-
-                    // readStream.on('open', function() {
-                    //     // This just pipes the read stream to the response object (which goes to the client)
-                    //     const { writeStream, promise } = uploadStream({ Bucket: 'ive-dev-parts-info', Key: `uploadingSample` });
-                    //     readStream.pipe(writeStream);
-                    //     promise.then(e => {
-                    //         res(e)
-                    //     }).catch(e => rej(e))
-
-                    // });
-
-                    // readStream.on('error', function(err) {
-                    //     rej(err);
-                    // });
-                    // const { writeStream, promise } = uploadStream({ Bucket: 'ive-dev-parts-info', Key: `uploadingSample` });
-
-
-
-
-                    // promise.catch(e => rej(e))
-                    function upload() {
-                        console.log(arguments)
-                    }
-
-                    // let out = fs.createWriteStream(folder, {
-                    //     flags: 'w',
-                    //     encoding: null
-                    // });
-
-
-
-
-                    await sftp.get('/Inbox/TestResponse/GBE3BKZ1.DBK5Z01D.X0000001', out).catch(e => console.log("catch", e))
-                    sftp.end()
-                }))
-                .catch(e => rej('ddada'))
-        })
-
-        let res_go = await gofile();
-
-        console.log('here file will be moved', res_go)
-        return res_go;
-
 
         console.time('---Job Processig Inintiated---')
-        console.log('even logging')
-        console.log(event)
-
+        let res_go = await process_file(event);
         /*
             ## This function wil take 
             ## glue params 
@@ -189,23 +158,14 @@ exports.handler = async function (event, context, callback) {
             ## params for deletion operation flag on s3 and sftp optionaly 
             
         */
-
-
-
         const filename = event['filename'] || 'Parts_Info_TMMK.txt'
         const S3targets3bucket = event['target_s3_bucket'] || 'ive-dev-parts-info'
         const sftpsourceFolder = event['sftp_source_Folder'] || SFTP_FOLDER
         let shouldDeletefromdestination = event['shouldDeletefromdestination'] || true
         let TriggerGlue = event['TriggerGlue'] || true
         let glueParams = event['glueParams'] || false
-
-
-
         // ## could be altered based on the params or arugs from input
         const S3DestFilename = S3targets3bucket
-
-
-
 
         const fileNameAndExtension = await splitfileNameAndExtension(filename)
         console.log(fileNameAndExtension, 'fileNameAndExtension')
@@ -289,17 +249,16 @@ exports.handler = async function (event, context, callback) {
             //   }
             console.log(TriggerGlue + 'TriggerGlue')
             const filenameforglue = fileNameAndExtension.name + '_' + fileNameAndExtension.extension
-            //  const statusofS3 = TriggerGlue ? await callGlueJob(filenameforglue) : null
+             const statusofS3 = TriggerGlue ? await callGlueJob(filenameforglue) : null
             return statusofS3
         }).catch(err => {
             console.log(('error while s3 write process flow'))
-            throw new Error(err)
+            throw err
         })
 
 
     }
     catch (e) {
-
-        return e
+        throw e
     }
 }
